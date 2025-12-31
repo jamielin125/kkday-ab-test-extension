@@ -6,8 +6,8 @@ import type { Environment } from '@/types';
  * @returns 環境類型：sit | stage | production | unsupported
  */
 export function detectEnvironment(hostname: string): Environment {
-  // SIT 環境：www.sit.kkday.com, www-05.sit.kkday.com, www-202.sit.kkday.com
-  if (/^www(-\d+)?\.sit\.kkday\.com$/.test(hostname)) {
+  // SIT 環境：www.sit.kkday.com, www-05.sit.kkday.com, www-202.sit.kkday.com, dev.kkday.com
+  if (/^www(-\d+)?\.sit\.kkday\.com$/.test(hostname) || hostname === 'dev.kkday.com') {
     return 'sit';
   }
 

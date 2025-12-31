@@ -28,6 +28,10 @@ const effectiveChanges = computed(() => {
 
 const hasChanges = computed(() => effectiveChanges.value.length > 0);
 
+// 依來源分組 A/B 測試（兼容舊版資料，無 source 視為 page）
+const pageTests = computed(() => props.abTests.filter((t) => !t.source || t.source === 'page'));
+const globalTests = computed(() => props.abTests.filter((t) => t.source === 'global'));
+
 // 處理子元件的變更事件
 function handleChange(testKey: string, caseValue: string) {
   const test = props.abTests.find((t) => t.key === testKey);
@@ -122,14 +126,37 @@ async function clearOverrides() {
     </div>
 
     <div class="list-items">
-      <ABTestItem
-        v-for="test in abTests"
-        :key="test.key"
-        :ab-test="test"
-        :is-read-only="environment === 'production'"
-        :pending-value="getPendingValue(test.key)"
-        @change="handleChange"
-      />
+      <!-- 頁面 A/B 測試區塊 -->
+      <div
+        v-if="pageTests.length > 0"
+        class="test-section"
+      >
+        <div class="section-header">頁面 A/B 測試</div>
+        <ABTestItem
+          v-for="test in pageTests"
+          :key="test.key"
+          :ab-test="test"
+          :is-read-only="environment === 'production'"
+          :pending-value="getPendingValue(test.key)"
+          @change="handleChange"
+        />
+      </div>
+
+      <!-- 全域 A/B 測試區塊 -->
+      <div
+        v-if="globalTests.length > 0"
+        class="test-section"
+      >
+        <div class="section-header">全域 A/B 測試</div>
+        <ABTestItem
+          v-for="test in globalTests"
+          :key="test.key"
+          :ab-test="test"
+          :is-read-only="environment === 'production'"
+          :pending-value="getPendingValue(test.key)"
+          @change="handleChange"
+        />
+      </div>
     </div>
 
     <!-- 錯誤訊息 -->
@@ -202,7 +229,22 @@ async function clearOverrides() {
 .list-items {
   display: flex;
   flex-direction: column;
+  gap: 16px;
+}
+
+.test-section {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
+}
+
+.section-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  padding: 4px 0;
+  border-bottom: 1px solid #EEEEEE;
+  margin-bottom: 4px;
 }
 
 .submit-error {
