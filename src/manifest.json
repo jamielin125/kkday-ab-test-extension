@@ -26,7 +26,8 @@
       "matches": [
         "*://*.kkday.com/*",
         "*://*.sit.kkday.com/*",
-        "*://*.stage.kkday.com/*"
+        "*://*.stage.kkday.com/*",
+        "*://dev.kkday.com/*"
       ],
       "js": ["src/content/index.ts"],
       "run_at": "document_idle"
@@ -41,7 +42,8 @@
   "host_permissions": [
     "*://*.kkday.com/*",
     "*://*.sit.kkday.com/*",
-    "*://*.stage.kkday.com/*"
+    "*://*.stage.kkday.com/*",
+    "*://dev.kkday.com/*"
   ],
   "web_accessible_resources": [
     {
@@ -49,7 +51,8 @@
       "matches": [
         "*://*.kkday.com/*",
         "*://*.sit.kkday.com/*",
-        "*://*.stage.kkday.com/*"
+        "*://*.stage.kkday.com/*",
+        "*://dev.kkday.com/*"
       ]
     }
   ]

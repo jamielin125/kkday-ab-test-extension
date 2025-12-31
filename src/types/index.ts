@@ -1,17 +1,27 @@
 // T009: Environment 型別
 export type Environment = 'sit' | 'stage' | 'production' | 'unsupported';
 
+// 錯誤代碼（避免 hard-coded 字串比對）
+export enum ErrorCode {
+  STATE_NOT_LOADED = 'STATE_NOT_LOADED',
+  CANNOT_READ_DATA = 'CANNOT_READ_DATA',
+}
+
 // T010: ABTestCase 與 ABTest 介面
 export interface ABTestCase {
   key: string;
   label: string;
 }
 
+// 新增：A/B 測試來源型別
+export type ABTestSource = 'page' | 'global';
+
 export interface ABTest {
   key: string;
   currentCase: string;
   cases: ABTestCase[];
   data: unknown | null;
+  source: ABTestSource;
 }
 
 // T011: RawABTestData 介面（頁面原始資料格式）
@@ -32,6 +42,7 @@ export interface PageState {
   abTests: ABTest[];
   isLoading: boolean;
   error: string | null;
+  errorCode?: ErrorCode | null;
 }
 
 // T013: Message Types
@@ -39,7 +50,8 @@ export interface ABTestDataMessage {
   type: 'AB_TEST_DATA';
   payload: {
     url: string;
-    data: RawABTestData | null;
+    pageTests: RawABTestData | null;
+    globalTests: RawABTestData | null;
   };
 }
 
@@ -78,6 +90,19 @@ export interface ClearOverridesMessage {
   };
 }
 
+export interface RefreshDataMessage {
+  type: 'REFRESH_DATA';
+  payload: {
+    tabId: number;
+  };
+}
+
+export interface RefreshDataResponse {
+  success: boolean;
+  state?: PageState;
+  error?: string;
+}
+
 export interface StateResponse {
   type: 'STATE_RESPONSE';
   payload: PageState;
@@ -89,4 +114,5 @@ export type ExtensionMessage =
   | SetCaseMessage
   | SetCasesMessage
   | ClearOverridesMessage
+  | RefreshDataMessage
   | StateResponse;

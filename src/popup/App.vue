@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import type { PageState } from '@/types';
+import { type PageState, ErrorCode } from '@/types';
 import ABTestList from './components/ABTestList.vue';
 
 const state = ref<PageState | null>(null);
@@ -25,9 +25,44 @@ onMounted(async () => {
     });
 
     if (response?.type === 'STATE_RESPONSE') {
+      // 如果 Background 沒有快取的狀態（Service Worker 可能被休眠過），自動 refresh
+      if (response.payload?.errorCode === ErrorCode.STATE_NOT_LOADED) {
+        await refreshData();
+        return;
+      }
       state.value = response.payload;
     } else {
       error.value = '無法取得頁面狀態';
+    }
+  } catch (err) {
+    error.value = '發生錯誤，請重新整理頁面後再試';
+  } finally {
+    isLoading.value = false;
+  }
+});
+
+// 重新讀取資料
+async function refreshData() {
+  isLoading.value = true;
+  error.value = null;
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) {
+      error.value = '無法取得當前分頁資訊';
+      return;
+    }
+
+    // 透過 background 重新執行 content script，等待資料回傳
+    const response = await chrome.runtime.sendMessage({
+      type: 'REFRESH_DATA',
+      payload: { tabId: tab.id },
+    });
+
+    if (response?.success && response.state) {
+      state.value = response.state;
+    } else {
+      error.value = response?.error || '無法取得頁面狀態';
     }
   } catch (err) {
     error.value = '發生錯誤，請重新整理頁面後再試';
@@ -35,7 +70,7 @@ onMounted(async () => {
   } finally {
     isLoading.value = false;
   }
-});
+}
 
 // 環境顯示名稱
 const environmentLabel = {
@@ -50,6 +85,14 @@ const environmentLabel = {
   <div class="popup-container">
     <header class="header">
       <h1>KKday A/B Test</h1>
+      <button
+        class="reload-btn"
+        :disabled="isLoading"
+        title="重新讀取"
+        @click="refreshData"
+      >
+        <span :class="{ spinning: isLoading }">↻</span>
+      </button>
     </header>
 
     <main class="content">
@@ -121,6 +164,9 @@ const environmentLabel = {
 }
 
 .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   padding: 12px 16px;
   background: linear-gradient(135deg, #FF5722, #FF7043);
   color: white;
@@ -130,6 +176,31 @@ const environmentLabel = {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
+}
+
+.reload-btn {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.reload-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.reload-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spinning {
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
 }
 
 .content {

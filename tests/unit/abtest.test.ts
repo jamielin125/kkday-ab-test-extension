@@ -16,7 +16,7 @@ describe('parseABTestData', () => {
       },
     };
 
-    const result = parseABTestData(rawData);
+    const result = parseABTestData(rawData, 'page');
 
     expect(result).toHaveLength(1);
     expect(result[0].key).toBe('app_only_coupon_on_mweb_test');
@@ -24,6 +24,7 @@ describe('parseABTestData', () => {
     expect(result[0].cases).toHaveLength(3);
     expect(result[0].cases).toContainEqual({ key: 'control', label: 'control' });
     expect(result[0].cases).toContainEqual({ key: 'show_all', label: 'show_all' });
+    expect(result[0].source).toBe('page');
   });
 
   it('應處理多個 A/B Test', () => {
@@ -40,17 +41,19 @@ describe('parseABTestData', () => {
       },
     };
 
-    const result = parseABTestData(rawData);
+    const result = parseABTestData(rawData, 'global');
 
     expect(result).toHaveLength(2);
+    expect(result[0].source).toBe('global');
+    expect(result[1].source).toBe('global');
   });
 
   it('應處理 null 輸入', () => {
-    expect(parseABTestData(null)).toEqual([]);
+    expect(parseABTestData(null, 'page')).toEqual([]);
   });
 
   it('應處理空物件', () => {
-    expect(parseABTestData({})).toEqual([]);
+    expect(parseABTestData({}, 'global')).toEqual([]);
   });
 });
 

@@ -1,9 +1,32 @@
-import type { PageState, ExtensionMessage, RawABTestData } from '@/types';
+import { type PageState, type ExtensionMessage, type RawABTestData, ErrorCode } from '@/types';
 import { detectEnvironment } from '@/utils/environment';
-import { parseABTestData, buildCookieName, getCookieDomain } from '@/utils/abtest';
+import {
+  parseABTestData,
+  buildCookieName,
+  getCookieDomain,
+  encodeCookieValue,
+  isValidCaseValue,
+} from '@/utils/abtest';
+
+/**
+ * 取得 manifest 中定義的 content script 路徑
+ */
+function getContentScriptPath(): string | undefined {
+  const manifest = chrome.runtime.getManifest();
+  return manifest.content_scripts?.[0]?.js?.[0];
+}
 
 // T021: Tab 狀態管理
 const tabStates = new Map<number, PageState>();
+
+// 等待資料更新的 Promise resolvers（用於 REFRESH_DATA）
+const pendingRefreshResolvers = new Map<number, () => void>();
+
+// 超時計時器（用於清理）
+const refreshTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
+
+// 資料更新等待超時時間 (ms)
+const REFRESH_TIMEOUT = 6000;
 
 /**
  * 初始化或更新 tab 的 PageState
@@ -26,8 +49,17 @@ function initializeTabState(tabId: number, url: string): PageState {
 
 /**
  * 更新 tab 的 A/B Test 資料
+ * @param tabId - 分頁 ID
+ * @param url - 頁面 URL
+ * @param pageTests - 頁面專屬 A/B 測試資料
+ * @param globalTests - 全域 A/B 測試資料
  */
-function updateTabABTestData(tabId: number, url: string, rawData: RawABTestData | null): void {
+function updateTabABTestData(
+  tabId: number,
+  url: string,
+  pageTests: RawABTestData | null,
+  globalTests: RawABTestData | null
+): void {
   let state = tabStates.get(tabId);
 
   if (!state) {
@@ -35,11 +67,30 @@ function updateTabABTestData(tabId: number, url: string, rawData: RawABTestData 
   }
 
   state.url = url;
-  state.abTests = parseABTestData(rawData);
+
+  // 解析頁面專屬和全域 A/B 測試資料
+  const parsedPageTests = parseABTestData(pageTests, 'page');
+  const parsedGlobalTests = parseABTestData(globalTests, 'global');
+  state.abTests = [...parsedPageTests, ...parsedGlobalTests];
+
   state.isLoading = false;
-  state.error = rawData === null ? '無法讀取 A/B Test 資料' : null;
+  state.error = pageTests === null && globalTests === null ? '無法讀取 A/B Test 資料' : null;
 
   tabStates.set(tabId, state);
+
+  // 如果有等待中的 refresh 請求，通知完成並清理超時計時器
+  const resolver = pendingRefreshResolvers.get(tabId);
+  if (resolver) {
+    resolver();
+    pendingRefreshResolvers.delete(tabId);
+
+    // 清理對應的超時計時器
+    const timeoutId = refreshTimeouts.get(tabId);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      refreshTimeouts.delete(tabId);
+    }
+  }
 }
 
 /**
@@ -54,8 +105,14 @@ function getTabState(tabId: number): PageState | null {
  * @param tabId - 分頁 ID
  * @param testKey - A/B Test 識別碼
  * @param caseValue - 要設定的 case 值
+ * @throws 如果 caseValue 格式無效
  */
 async function setCookie(tabId: number, testKey: string, caseValue: string): Promise<void> {
+  // 驗證 case 值格式，防止注入攻擊
+  if (!isValidCaseValue(caseValue)) {
+    throw new Error(`Invalid case value format: ${caseValue}`);
+  }
+
   const tab = await chrome.tabs.get(tabId);
   if (!tab.url) return;
 
@@ -67,7 +124,7 @@ async function setCookie(tabId: number, testKey: string, caseValue: string): Pro
     url: tab.url,
     domain,
     name: cookieName,
-    value: caseValue,
+    value: encodeCookieValue(caseValue),
     path: '/',
     secure: url.protocol === 'https:',
     sameSite: 'lax',
@@ -82,7 +139,12 @@ chrome.runtime.onMessage.addListener(
     switch (message.type) {
       case 'AB_TEST_DATA':
         if (tabId !== undefined) {
-          updateTabABTestData(tabId, message.payload.url, message.payload.data);
+          updateTabABTestData(
+            tabId,
+            message.payload.url,
+            message.payload.pageTests,
+            message.payload.globalTests
+          );
         }
         break;
 
@@ -99,6 +161,7 @@ chrome.runtime.onMessage.addListener(
               abTests: [],
               isLoading: false,
               error: '尚未載入頁面資料',
+              errorCode: ErrorCode.STATE_NOT_LOADED,
             } as PageState,
           });
         }
@@ -148,6 +211,65 @@ chrome.runtime.onMessage.addListener(
           }
         })();
         return true; // 保持 sendResponse 有效（非同步處理）
+
+      case 'REFRESH_DATA':
+        // 重新讀取頁面的 A/B Test 資料，等待完成後回傳 state
+        (async () => {
+          try {
+            const { tabId } = message.payload;
+            const tab = await chrome.tabs.get(tabId);
+            if (!tab.url) {
+              sendResponse({ success: false, error: '無法取得頁面資訊' });
+              return;
+            }
+
+            // 清理舊的 pending 請求（處理競態條件）
+            const existingResolver = pendingRefreshResolvers.get(tabId);
+            if (existingResolver) {
+              existingResolver(); // 讓舊的 Promise resolve
+              pendingRefreshResolvers.delete(tabId);
+            }
+            const existingTimeout = refreshTimeouts.get(tabId);
+            if (existingTimeout) {
+              clearTimeout(existingTimeout);
+              refreshTimeouts.delete(tabId);
+            }
+
+            // 創建等待 Promise
+            const dataReadyPromise = new Promise<void>((resolve) => {
+              pendingRefreshResolvers.set(tabId, resolve);
+            });
+
+            // 設定超時並追蹤計時器
+            const timeoutPromise = new Promise<void>((resolve) => {
+              const timeoutId = setTimeout(() => {
+                pendingRefreshResolvers.delete(tabId);
+                refreshTimeouts.delete(tabId);
+                resolve();
+              }, REFRESH_TIMEOUT);
+              refreshTimeouts.set(tabId, timeoutId);
+            });
+
+            const contentScriptPath = getContentScriptPath();
+            if (contentScriptPath) {
+              await chrome.scripting.executeScript({
+                target: { tabId },
+                files: [contentScriptPath],
+              });
+            }
+
+            // 等待資料回傳或超時
+            await Promise.race([dataReadyPromise, timeoutPromise]);
+
+            // 回傳最新的 state
+            const state = getTabState(tabId);
+            sendResponse({ success: true, state });
+          } catch (error) {
+            console.error('REFRESH_DATA 執行失敗:', error);
+            sendResponse({ success: false, error: String(error) });
+          }
+        })();
+        return true;
 
       case 'CLEAR_OVERRIDES':
         // 清除所有 ab_test_override_* cookie
@@ -227,13 +349,16 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       }
 
       // 重新注入 content script 取得資料（修復 Phase 1: 狀態遺失問題）
-      chrome.scripting.executeScript({
-        target: { tabId },
-        files: ['src/content/index.js'],
-      }).catch((err) => {
-        // 忽略無法注入的情況（例如 chrome:// 頁面）
-        console.debug('Content script injection skipped:', err.message);
-      });
+      const contentScriptPath = getContentScriptPath();
+      if (contentScriptPath) {
+        chrome.scripting.executeScript({
+          target: { tabId },
+          files: [contentScriptPath],
+        }).catch((err) => {
+          // 忽略無法注入的情況（例如 chrome:// 頁面）
+          console.debug('Content script injection skipped:', err.message);
+        });
+      }
     }
   }
 });
