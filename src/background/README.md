@@ -52,7 +52,7 @@ graph TB
     INDEX --> TABS
 
     %% 消息流
-    POPUP -.->|GET_STATE<br/>SET_CASE<br/>SET_CASES<br/>CLEAR_OVERRIDES| RUNTIME
+    POPUP -.->|GET_STATE<br/>SET_CASES<br/>CLEAR_OVERRIDES| RUNTIME
     CONTENT -.->|AB_TEST_DATA| RUNTIME
     PAGE -.->|postMessage| CONTENT
 ```
@@ -157,7 +157,6 @@ classDiagram
 |-----|------|---------|------|
 | `AB_TEST_DATA` | Content Script | `tabStateManager.updateABTestData()` | 頁面回報 A/B 測試數據 |
 | `GET_STATE` | Popup | `tabStateManager.get()` | 取得當前 Tab 狀態 |
-| `SET_CASE` | Popup | `cookieService` + `tabReloadService` | 設定單一測試的 case |
 | `SET_CASES` | Popup | `cookieService` + `tabReloadService` | 批量設定多個測試 |
 | `REFRESH_DATA` | Popup | `tabReloadService.injectScriptAndWaitForData()` | 重新讀取頁面數據 |
 | `CLEAR_OVERRIDES` | Popup | `cookieService` + `tabReloadService` | 清除所有 override |
