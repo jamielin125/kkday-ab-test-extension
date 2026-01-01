@@ -5,10 +5,10 @@
  */
 (function () {
   // 輪詢配置：使用 exponential backoff 策略
-  // 初始間隔 200ms，每次翻倍，最大間隔 2000ms
-  // 總等待時間約 12 秒（200 + 400 + 800 + 1600 + 2000*5 = 13000ms）
+  // 初始間隔 500ms，每次翻倍，最大間隔 2000ms
+  // 給頁面更多時間初始化，避免讀取到舊數據
   const MAX_ATTEMPTS = 10;
-  const INITIAL_INTERVAL = 200;
+  const INITIAL_INTERVAL = 500;
   const MAX_INTERVAL = 2000;
   let attempts = 0;
   let currentInterval = INITIAL_INTERVAL;
