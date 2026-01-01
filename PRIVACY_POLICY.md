@@ -1,6 +1,6 @@
 # Privacy Policy
 
-No data or personal information is collected by github-jira-timer.
+No data or personal information is collected by kkday-ab-test-extension.
 
 ## Contact
 
