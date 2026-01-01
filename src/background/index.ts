@@ -45,22 +45,6 @@ chrome.runtime.onMessage.addListener(
         return true;
       }
 
-      case 'SET_CASE':
-        (async () => {
-          try {
-            const { testKey, caseValue, tabId: targetTabId } = message.payload;
-
-            await cookieService.setCookie(targetTabId, testKey, caseValue);
-            await tabReloadService.reloadAndWaitForData(targetTabId);
-
-            sendResponse({ success: true });
-          } catch (error) {
-            console.error('SET_CASE 執行失敗:', error);
-            sendResponse({ success: false, error: String(error) });
-          }
-        })();
-        return true;
-
       case 'SET_CASES':
         (async () => {
           try {

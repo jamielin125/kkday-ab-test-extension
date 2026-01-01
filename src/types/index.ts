@@ -60,15 +60,6 @@ export interface GetStateMessage {
   tabId: number;
 }
 
-export interface SetCaseMessage {
-  type: 'SET_CASE';
-  payload: {
-    testKey: string;
-    caseValue: string;
-    tabId: number;
-  };
-}
-
 // Phase 3: 批次設定多個 A/B Test
 export interface CaseChange {
   testKey: string;
@@ -111,7 +102,6 @@ export interface StateResponse {
 export type ExtensionMessage =
   | ABTestDataMessage
   | GetStateMessage
-  | SetCaseMessage
   | SetCasesMessage
   | ClearOverridesMessage
   | RefreshDataMessage
